@@ -8,6 +8,8 @@ Customization: @Despereaux222
 Path to DeployVM.csv file with new VM info
 .PARAMETER vCenter
 vCenter Server FQDN or IP
+.PARAMETER auto
+Will allow script to run with no review or confirmation                        
 .PARAMETER createcsv
 Generates a blank csv file – DeployVM.csv
 .EXAMPLE
@@ -19,15 +21,20 @@ Runs DeployVM specifying vCenter address
 .EXAMPLE
 .\DeployVM.ps1 -csvfile "E:\Scripts\Deploy\DeployVM.csv" -vcenter my.vcenter.address
 Runs DeployVM specifying path to csv file, vCenter address
+ 
 .EXAMPLE
 .\DeployVM.ps1 -createcsv
 Creates a new/blank DeployVM.csv file in same directory as script
+      
+                       
+                 
+              
 REQUIREMENTS
 PowerShell v3 or greater
 vCenter (tested on 5.1/5.5)
 PowerCLI 5.5 R2 or later
 CSV File – VM info with the following headers
-    Name, Boot, OSType, Template, CustSpec, Folder, ResourcePool, 
+    Name, Boot, OSType, Template, CustSpec, Folder, ResourcePool, ESXiHost
     CPU, CpuLimitMhz, RAM, MemLimitMB, 
     Disk1, Disk2, Disk3, Disk4, Datastore, DiskStorageFormat, 
     NetType, Network, DHCP, IPAddress, SubnetMask, Gateway, pDNS, sDNS, Notes
@@ -41,6 +48,7 @@ CSV Field Definitions
 	CustSpec – Name of existing OS Customiation Spec to use
 	Folder – Folder in which to place VM in vCenter (optional)
 	ResourcePool – VM placement – can be a reasource pool, host or a cluster
+    ESXiHost - IP of ESXi Host
 	CPU – Number of vCPU
     CpuLimitMhz - Limit CPU MHz
 	RAM – Amount of RAM
@@ -60,6 +68,14 @@ CSV Field Definitions
 	pDNS – Primary DNS (Windows Only)
 	sDNS – Secondary NIC (Windows Only)
 	Notes – Description applied to the vCenter Notes field on VM
+ 
+       
+                                          
+                                                                                       
+                     
+ 
+     
+                                                                                       
 #>
 
 #requires –Version 3
@@ -92,7 +108,7 @@ $logfile = $logDir + $scriptName + "_" + (Get-Date –uformat %I-%M-%S_%d-%m-%Y)
 $deployedDir = $scriptDir + "\Deployed\"
 $deployedFile = $deployedDir + "DeployVM_" + (Get-Date –uformat %I-%M-%S_%d-%m-%Y) + "_" + $env:username  + ".csv"
 $exportpath = $scriptDir + "\DeployVM.csv"
-$headers = "" | Select-Object Name, Boot, OSType, Template, CustSpec, Folder, ResourcePool, CPU, CpuLimitMhz, RAM, MemLimitMB, Disk1, Disk2, Disk3, Disk4, Datastore, DiskStorageFormat, NetType, Network, DHCP, IPAddress, SubnetMask, Gateway, pDNS, sDNS, Notes
+$headers = "" | Select-Object Name, Boot, OSType, Template, CustSpec, Folder, ResourcePool, ESXiHost, CPU, CpuLimitMhz, RAM, MemLimitMB, Disk1, Disk2, Disk3, Disk4, Datastore, DiskStorageFormat, NetType, Network, DHCP, IPAddress, SubnetMask, Gateway, pDNS, sDNS, Notes
 $taskTab = @{}
  
 #——————————————————————–
@@ -244,7 +260,7 @@ Foreach ($VM in $newVMs) {
  
     # Create VM
     Out-Log "  + $vmName"
-    $taskTab[(New-VM –Name $VM.Name –ResourcePool $VM.ResourcePool –Location $VM.Folder –Datastore $VM.Datastore –DiskStorageFormat $VM.DiskStorageFormat `
+    $taskTab[(New-VM –Name $VM.Name –ResourcePool $VM.ResourcePool -VMHost $VM.ESXiHost –Location $VM.Folder –Datastore $VM.Datastore –DiskStorageFormat $VM.DiskStorageFormat `
     –Notes $VM.Notes –Template $VM.Template –OSCustomizationSpec temp$vmName –RunAsync –EA SilentlyContinue).Id] = $VM.Name
 
     # Remove temp OS Custumization spec
@@ -255,8 +271,8 @@ Foreach ($VM in $newVMs) {
         If ($Error.Count -eq 1 -and $Error.Exception -match "'Location' expects a single value") {
             $vmLocation = $VM.Folder
             Out-Log "Unable to place $vmName in desired location, multiple $vmLocation folders exist, check root folder" "Red"
-        }
-        Else {
+        
+        }Else {
             Out-Log "`n$vmName failed to deploy!" "Red"
             Foreach ($err in $Error) {
                 Out-Log "$err" "Red"
@@ -277,7 +293,7 @@ while($runningTasks -gt 0){
     $vmStatus = "[{0} of {1}] {2}" -f $runningTasks, $totalTasks, "Tasks Remaining"
 	Write-Progress –Activity "Monitoring Task Processing" –Status $vmStatus –PercentComplete (100*($totalTasks–$runningTasks)/$totalTasks)
 	Get-Task | % {
-    If($taskTab.ContainsKey($_.Id) -and $_.State -eq "Success") {
+    If($taskTab.ContainsKey($_.Id) -and $_.State -eq "Success"){
 
       #Deployment completed
       $Error.Clear()
@@ -329,18 +345,19 @@ while($runningTasks -gt 0){
       
 	  # Boot VM
 	  If ($VMconfig.Boot -match "true") {
+                                         
       	$VM | Start-VM –EA SilentlyContinue | Out-Null
         }
         $taskTab.Remove($_.Id)
-        $runningTasks
+        $runningTasks--
       If ($Error.Count -ne 0) {
         Out-Log "=> $vmName completed with errors" "Red"
         Foreach ($err in $Error) {
             Out-Log "$Err" "Red"
         }
         $failReconfig += @($vmName)
-      }
-      Else {
+      
+      } Else {
         Out-Log "=> $vmName is Complete" "Green"
         $successVMs += @($vmName)
       }
@@ -351,16 +368,17 @@ while($runningTasks -gt 0){
       $failed = $taskTab[$_.Id]
       Out-Log "`n$failed failed to deploy!`n" "Red"
       $taskTab.Remove($_.Id)
-      #$runningTasks
+      $runningTasks--
       $failDeploy += @($failed)
     }
   }
+  Start-Sleep –Seconds 10
 }
  
 #——————————————————————–
 # Close Connections
  
-#Disconnect-VIServer –Server $vcenter –Force –Confirm:$false
+Disconnect-VIServer –Server $vcenter –Force –Confirm:$false
  
 #——————————————————————–
 # Outputs
