@@ -14,7 +14,7 @@ Get-Module -Name 'ImportExcel' -ListAvailable
 Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false
 ###Command
 #Connect to vCenter
-Connect-VIServer -server "vcenter-hht.aohoavn.local"
+Connect-VIServer -server "vcenter.yourhost.local"
 #Gather Information on ESXi Hosts
 Get-VMHost
 Get-VMHost | format-list -Property State,LicenseKey,Version
